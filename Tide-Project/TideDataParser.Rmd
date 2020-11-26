@@ -1,0 +1,151 @@
+---
+title: "Tide Data Parser"
+author: "Henry Becker"
+date: "7/2020"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+***This Markdown is now out of date with the straight script. The straight script now uses LST and is set to Wachapreague.
+
+
+
+
+This R markdown contains a script for downloading and analyzing NOAA Tide and Current Bouy data. 
+The "rnoaa" package allows the user to easily retrieve data from the NOAA API. 
+
+Kiptopeke station ID = 8632200. The code below is pulling data from the Kiptopeke station because it has a complete data record going back to 1980.
+
+Wachapreague station ID = 8631044. Because Wachapreague is missing data in 2006 and 2007 it will produce an error and stop the loop, to retrieve all wachapreague data change the data range in the initialization of the for loop to c(1983:2005, 2008:2019).
+
+
+```{r include=FALSE}
+library(rnoaa)
+library(lubridate)
+library(dplyr)
+```
+
+
+The code below uses the rnoaa coops_search function. The ouput can be customized quite a bit.
+Information about this function can be found here: https://tidesandcurrents.noaa.gov/api/#units.
+Currently the high and low tide heights for each day are being pulled from the API ("high_low").
+Currently the tide heights are relative to the station datum ("STND") although other datums can be used ("NAVD88" etc).
+
+
+```{r}
+?coops_search
+```
+```{r}
+#creates an empty data frame which will be filled with tide data
+tideData <- data.frame()
+
+#only so much tide data can be pulled from the API per call so the for loop below retrieves data one year at a time
+for (i in c(1980:2019)){
+      
+      #if you want to see each year as it is being processed
+      #print(paste0("Start: ", i))
+      
+      new <- coops_search(station_name = 8632200, begin_date = paste0(i,"0101"), 
+             end_date = paste0((i),"1231"), product = "high_low", datum = "STND")
+      
+      tideData <- rbind(tideData, new$data)
+}
+
+#the original column names are nondescriptive
+colnames(tideData) <-  c("Date", "waterLevel", "Tide", "dataFlags")
+
+# Change the default "H " to a more sensible "H"
+tideData$Tide[tideData$Tide == "H "] <- "H"
+tideData$Tide[tideData$Tide == "L "] <- "L"
+```
+
+
+This is the data frame we know have to work with.
+For each day there are two high tides and two low tides. 
+HH and LL differentiate between the multiple high and low tides on a given day.
+
+
+```{r}
+head(tideData)
+```
+
+
+The data flag column is not tidy (this is just how the rnoaa function pulls the data from the API). 
+A 1 before the comma indicates that the water level value has been inferred.
+A 1 after the comma indicates either the maximum or minimum expected water level height limit was exceeded.
+If there are 0s before and after the comma there are no flags for that particular measurement. 
+Documentation on the data flags can be found here: https://tidesandcurrents.noaa.gov/api/responseHelp.html.
+
+
+```{r}
+# To determine how high a tide is relative to the rest of the record we will only need the high tides which are subsetted here. 
+justHighs <- tideData[tideData$Tide == "H" | tideData$Tide == "HH",]
+
+#Create year month and day column which make the specific date easy to call
+justHighs$Month <- month(justHighs$Date)
+justHighs$Year <- year(justHighs$Date)
+justHighs$Day <- day(justHighs$Date)
+justHighs$Date <- NULL
+justHighs$dataFlags <- NULL
+justHighs$Tide <- NULL
+head(justHighs)
+```
+
+
+This function takes the arguments month, day, and year and returns the percent of tides in the record lower than the tides on the day selected with the arguments.
+
+
+```{r}
+howHighWasTheTide <- function(month,day,year){
+
+   #subset the high tides into a data frame that only includes the high tides for the day selected
+   specificValue <- justHighs[justHighs$Year == year & justHighs$Month == month & justHighs$Day == day, ]
+   
+   #create an object that stores the number of high tides on the selected day
+   numHighs <- nrow(specificValue)
+   
+   #creates an object that stores the number of rows that have tides higher than the specific tide on the selected day
+   firstHigh <- nrow(justHighs[justHighs$waterLevel > specificValue$waterLevel[1],])
+   secondHigh <- nrow(justHighs[justHighs$waterLevel > specificValue$waterLevel[2],])
+   
+   #calculates the percent of tides higher than the selected tide on the selected day
+   firstPercentile <- (firstHigh / nrow(justHighs))*100
+   secondPercentile <- (secondHigh / nrow(justHighs))*100
+   
+   #flips the percent
+   firstPercent <- 100 - firstPercentile
+   secondPercent <- 100 - secondPercentile
+   
+   #rounds the output
+   firstOutput <- signif(firstPercent, digits = 4)
+   secondOutput <- signif(secondPercent, digits = 4)
+   
+   second <- paste("The second high tide on", month,"/",day,"/",year, "is higher than", secondOutput, "Percent of high tides from 1980 - 2018")
+      
+   first <- paste("The first high tide on", month,"/",day,"/",year, "is higher than", firstOutput, "Percent of high tides from 1980 - 2018")
+   
+      #if there was more than one high tide on the selected day both tide percents will be shown 
+      if(numHighs == 1) {return(first)}
+      if(numHighs == 2) {return(paste(first,"--------", second))}
+}
+
+```
+
+
+
+```{r}
+howHighWasTheTide(month = 8, day = 15, year = 2018)
+```
+
+
+```{r}
+howHighWasTheTide(month = 6, day = 25, year = 2010)
+```
+
+
