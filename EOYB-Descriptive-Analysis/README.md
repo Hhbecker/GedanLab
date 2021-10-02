@@ -1,2 +1,4 @@
 # VCR_EOYB_Descriptive_Analysis
-The first task is to create bar graphs of the total biomass (standardized by meter squared) of each species present within a zone for every year data is collected in a marsh site. 
+The Virginia Coast Reserve End of Year Biomass dataset stretches all the way back to the late 1990s. This repo contains several scripts used for the descriptive analysis of this dataset.
+
+Original: total biomass (standardized by meter squared) of each species present within each marsh zone for each year data was collected in each marsh site. 
